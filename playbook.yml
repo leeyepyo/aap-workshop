@@ -1,0 +1,86 @@
+---
+# Demo Playbook for Workshop "Red Hat Ansible Automation Platform: Streamlining System Administration and Security Automation"
+# Patrick Lee | SYSTEX
+# Last modified: 2025-05-23
+
+- name: System Administration Demo
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure firewalld package is installed
+      ansible.builtin.dnf:
+        name: firewalld
+        state: present
+
+    - name: Ensure firewalld service is enabled and running
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Ensure the ports are open
+      loop:
+        - "22/tcp"
+        - "80/tcp"
+        - "443/tcp"
+      ansible.posix.firewalld:
+        port: "{{ item }}"
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: Check available size of root partition | set_fact
+      ansible.builtin.set_fact:
+        root_partition: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | list | first }}"
+
+    - name: Check available size of root partition
+      ansible.builtin.debug:
+        msg: "The root partition has {{ (root_partition['size_available'] * 100 / root_partition['size_total']) | round(1, 'common') }}% free space."
+
+- name: Security Automation Demo
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure usb-storage kernel module is not available
+      block:
+        - name: Ensure modprobe config file exists to disable usb-storage kernel module
+          ansible.builtin.lineinfile:
+              path: /etc/modprobe.d/CIS.conf
+              regexp: "^(#)?install usb-storage(\\s|$)"
+              line: "install usb-storage /bin/true"
+              create: true
+              mode: '0600'
+
+        - name: Ensure blacklist config file exists to disable usb-storage kernel module 
+          ansible.builtin.lineinfile:
+            path: /etc/modprobe.d/blacklist.conf
+            regexp: "^(#)?blacklist usb-storage(\\s|$)"
+            line: "blacklist usb-storage"
+            create: true
+            mode: '0600'
+
+        - name: Ensure usb-storage kernel module is disabled
+          community.general.modprobe:
+            name: usb-storage
+            state: absent
+
+    - name: Ensure system wide crypto policy disables sha1 hash and signature support
+      block:
+        - name: Ensure policy module exists to disable sha1
+          ansible.builtin.template:
+            src: templates/NO-SHA1.pmod.j2
+            dest: /etc/crypto-policies/policies/modules/NO-SHA1.pmod
+
+        - name: Ensure crypto policy is updated
+          ansible.builtin.shell: "update-crypto-policies --set DEFAULT:NO-SHA1"
+
+    - name: Ensure message of the day is configured properly
+      block:
+        - name: Ensure motd file exists
+          ansible.builtin.template:
+            src: templates/motd.j2
+            dest: /etc/motd
+            owner: root
+            group: root
+            mode: 'go-rx'
+
