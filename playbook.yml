@@ -79,7 +79,7 @@
         - name: Ensure motd file exists
           ansible.builtin.template:
             src: templates/motd.j2
-            dest: /etc/motd
+            dest: /etc/motd.d/motd
             owner: root
             group: root
             mode: 'go-rx'
